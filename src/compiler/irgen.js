@@ -275,9 +275,9 @@ class ScriptTreeGenerator {
             const index = this.script.arguments.lastIndexOf(name);
             if (index === -1) {
                 const nameCheck = name.toLowerCase();
-                const bool = nameCheck === 'is compiled?' || nameCheck === 'is penguinmod?' ||
-                    nameCheck === 'is penguinmod or turbowarp?';
-                // 'is turbowarp?' will return false since this is penguinmod, duh
+                const bool = nameCheck === 'is compiled?' || nameCheck === 'is ArkIDE?' ||
+                    nameCheck === 'is ArkIDE or turbowarp?';
+                // 'is turbowarp?' will return false since this is ArkIDE, duh
                 return {
                     kind: 'constant',
                     value: bool

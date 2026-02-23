@@ -1,4 +1,4 @@
-## PenguinMod/PenguinMod-Vm
+## ArkIDE/ArkIDE-Vm
 
 Modified Scratch VM with a JIT compiler and more features.
 
