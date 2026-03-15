@@ -1434,16 +1434,13 @@ const parseScratchObject = function (object, runtime, extensions, zip, assets, f
     if (object.hasOwnProperty('variables')) {
         for (const varId in object.variables) {
             const variable = object.variables[varId];
-            // A variable is a cloud variable if:
-            // - the project says it's a cloud variable, and
-            // - it's a stage variable, and
-            // - the runtime can support another cloud variable
-            const isCloud = (variable.length === 3) && variable[2] &&
+            const isCloud = ((variable.length === 3 && variable[2]) ||
+                variable[0].startsWith('☁ ') || variable[0].startsWith(':cloud: ')) &&
                 object.isStage && runtime.canAddCloudVariable();
             const newVariable = new Variable(
-                varId, // var id is the index of the variable desc array in the variables obj
-                variable[0], // name of the variable
-                Variable.SCALAR_TYPE, // type of the variable
+                varId,
+                variable[0],
+                Variable.SCALAR_TYPE,
                 isCloud
             );
             if (isCloud) runtime.addCloudVariable();

@@ -18,7 +18,7 @@ class Variable {
         this.id = id || uid();
         this.name = name;
         this.type = type;
-        this.isCloud = isCloud;
+        this.isCloud = !!isCloud;
         switch (this.type) {
         case Variable.SCALAR_TYPE:
             this.value = 0;
