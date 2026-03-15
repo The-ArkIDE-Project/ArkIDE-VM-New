@@ -7,7 +7,7 @@ const Cast = require("../../util/cast");
 /** GUI */
 let isScratchBlocksReady = typeof ScratchBlocks === "object";
 
-let updateEditorSchema = (runtime, globalFuncs) => { /* Overridden in 'initBlockTools' */ };
+let updateEditorSchema = (globalFuncs) => { /* Overridden in 'initBlockTools' */ };
 
 const SECRET_BLOCK_KEY = "needsInit-1@#4%^7*(0";
 
@@ -42,11 +42,12 @@ function initBlockTools() {
     });
   }
 
-  // update the ace editor autocomplete with various items
-  // from various areas of Scratch
-  let aceCompleteSchema = {};
-  updateEditorSchema = (runtime, globalFuncs) => {
-    const vm = runtime.vm;
+  // update the ace editor autocomplete with various custom items
+  let aceCompleteSchema = [];
+  updateEditorSchema = (globalFuncs) => {
+    aceCompleteSchema = [
+      "data", // variable used when passing an array into a js data input
+    ];
 
     // add global functions into autocomplete
     const globalFuncNames = {};
@@ -54,15 +55,10 @@ function initBlockTools() {
       const iterator = globalFuncs.keys();
       let iteratorValue = iterator.next();
       while (!iteratorValue.done) {
-        globalFuncNames[iteratorValue.value] = [];
+        aceCompleteSchema.push(iteratorValue.value);
         iteratorValue = iterator.next();
       }
     }
-
-    aceCompleteSchema = {
-      "data": [], // variable used when passing an array into a js data input
-      ...globalFuncNames
-    };
   };
 
   /*
@@ -94,12 +90,13 @@ function initBlockTools() {
           }
 
           let list = [];
-          if (current) {
+          if (current && chain.length) {
             list = [
               ...Object.getOwnPropertyNames(current),
               ...Object.getOwnPropertyNames(current.constructor.prototype)
             ];
-          } else if (chain.length === 0 || chain[0] === "window") {
+          } else {
+            list.push(...aceCompleteSchema);
             list.push("vm");
             if (typeof Scratch === "object") list.push("Scratch");
             if (typeof Blockly === "object") list.push("Blockly");
@@ -196,10 +193,8 @@ function initBlockTools() {
 
       // blockly will prevent us from focusining on our textarea
       // so we need to override it via outside events
-      const textarea = editor.container.querySelector("textarea");
       const unfocusListener = (e) => {
         if (String(e.toElement?.className).includes("ace")) return;
-        textarea._lastFocusTime = undefined;
 
         editor.blur();
         ScratchBlocks.mainWorkspace.allowDragging = true;
@@ -207,21 +202,14 @@ function initBlockTools() {
 
         input.removeEventListener("mouseleave", unfocusListener);
       };
-      editor.container.addEventListener("mousedown", (e) => {
-        textarea._lastFocusTime = e.timeStamp;
 
-        // manually unfocus when we leave the editor
+      ScratchBlocks.bindEventWithChecks_(input, "mousedown", field, (e) => {
+        e.stopPropagation();
+        ScratchBlocks.mainWorkspace.allowDragging = false;
+        parent.setMovable(false);
+        editor.focus();
+
         input.addEventListener("mouseleave", unfocusListener);
-      });
-      textarea.addEventListener("blur", (e) => {
-        if (e.timeStamp - textarea._lastFocusTime < 250) {
-          // blockly has forced unfocused this element
-          queueMicrotask(() => {
-            ScratchBlocks.mainWorkspace.allowDragging = false;
-            parent.setMovable(false);
-            editor.focus();
-          });
-        }
       });
 
       // allow resizing the editor
@@ -299,7 +287,7 @@ function initBlockTools() {
 }
 if (isScratchBlocksReady) {
   initBlockTools();
-  if (window.vm) updateEditorSchema(window.vm.runtime);
+  updateEditorSchema();
 }
 
 class SPjavascriptV2 {
@@ -308,7 +296,7 @@ class SPjavascriptV2 {
     this.isInSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
     this.isEditorUnsandboxed = false;
 
-    this.runtime.vm.on("EXTENSION_ADDED", () => updateEditorSchema(this.runtime, this.globalFuncs));
+    this.runtime.vm.on("EXTENSION_ADDED", () => updateEditorSchema(this.globalFuncs));
     this.runtime.vm.on("workspaceUpdate", () => {
       if (!isScratchBlocksReady) {
         isScratchBlocksReady = typeof ScratchBlocks === "object";
@@ -560,7 +548,7 @@ class SPjavascriptV2 {
     }
   }
 
-  async _compileCode(code, codeArgs) {
+  async _compileCode(code, codeArgs = []) {
     let binders = "";
 
     /* inject global functions */
@@ -639,8 +627,7 @@ class SPjavascriptV2 {
       caller += codeArgs.map(a => JSON.stringify(a)).join(",");
       caller += ")";
 
-      const newFuncString = "await" + newFunc.toString() + caller;
-
+      const newFuncString = "(" + newFunc.toString() + ")" + caller;
       return new Promise((resolve) => {
         SandboxRunner.execute(newFuncString).then(result => {
           // result is { value: any, success: boolean }
@@ -678,6 +665,7 @@ class SPjavascriptV2 {
 
   async jsBoolean(args) {
     const possiblePromise = await this._compileCode(Cast.toString(args.CODE));
+
     /* force output a boolean */
     if (possiblePromise && typeof possiblePromise.then === "function") {
       return (async () => {
@@ -685,6 +673,7 @@ class SPjavascriptV2 {
         return Cast.toBoolean(value);
       })();
     }
+
     return Cast.toBoolean(possiblePromise);
   }
   async jsBooleanBinded(args) {
@@ -692,6 +681,7 @@ class SPjavascriptV2 {
       Cast.toString(args.CODE),
       this._parseArguments(args.ARGS)
     );
+
     /* force output a boolean */
     if (possiblePromise && typeof possiblePromise.then === "function") {
       return (async () => {
@@ -699,6 +689,7 @@ class SPjavascriptV2 {
         return Cast.toBoolean(value);
       })();
     }
+
     return Cast.toBoolean(possiblePromise);
   }
 
@@ -711,7 +702,7 @@ class SPjavascriptV2 {
       if (funcRegex.test(code) || lambRegex.test(code)) this.globalFuncs.set(funcName, { code, isBlockCode: false });
       else throw new Error("Global Code must be 'function' or 'lambda'!");
 
-      updateEditorSchema(this.runtime, this.globalFuncs);
+      updateEditorSchema(this.globalFuncs);
     } else {
       throw new Error("Illegal Function Name!");
     }
@@ -722,7 +713,7 @@ class SPjavascriptV2 {
     if (this._isLegalFuncName(funcName)) {
       const branch = util.thread.blockContainer.getBranch(util.thread.peekStack(), 1);
       this.globalFuncs.set(funcName, { id: branch, origin: util.target.id, isBlockCode: true });
-      updateEditorSchema(this.runtime, this.globalFuncs);
+      updateEditorSchema(this.globalFuncs);
     } else {
       throw new Error("Illegal Function Name!");
     }
@@ -734,7 +725,7 @@ class SPjavascriptV2 {
 
   deleteGlobalFunc(args) {
     this.globalFuncs.delete(Cast.toString(args.NAME));
-    updateEditorSchema(this.runtime, this.globalFuncs);
+    updateEditorSchema(this.globalFuncs);
   }
 
   returnData(args, util) {

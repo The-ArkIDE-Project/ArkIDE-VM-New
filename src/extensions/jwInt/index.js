@@ -307,6 +307,7 @@ class Extension {
                     acceptReporters: false,
                     items: [
                         "abs",
+                        "log",
                         "sign"
                     ]
                 },
@@ -349,20 +350,26 @@ class Extension {
     div({A, B}) {
         A = jwInt.Type.toInt(A)
         B = jwInt.Type.toInt(B)
-        return new jwInt.Type(A.number / B.number)
+        if (B.number === 0n) return new jwInt.Type();
+        return new jwInt.Type(A.number / B.number);
     }
 
     pow({A, B}) {
         A = jwInt.Type.toInt(A)
         B = jwInt.Type.toInt(B)
-        return new jwInt.Type(A.number ** B.number)
+        if (A.number == 1n) return new jwInt.Type(1n);
+        if (A.number == -1n) return new jwInt.Type(B.number % 2 === 0n ? 1n : -1n);
+        if (B.number < 0n) return new jwInt.Type();
+        return new jwInt.Type(A.number ** B.number);
     }
 
     mod({A, B}) {
-        A = jwInt.Type.toInt(A)
-        B = jwInt.Type.toInt(B)
-        if (B.number == 0) return new jwInt.Type(0)
-        return new jwInt.Type(A.number % B.number)
+        A = jwInt.Type.toInt(A);
+        B = jwInt.Type.toInt(B);
+        if (B.number === 0n) return new jwInt.Type();
+        let result = A.number % B.number;
+        if (result / B.number < 0n) result += B.number;
+        return new jwInt.Type(result);
     }
 
     eq({A, B}) {
@@ -426,16 +433,19 @@ class Extension {
     }
 
     mathop({MATHOP, INPUT}) {
-        INPUT = jwInt.Type.toInt(INPUT)
+        INPUT = jwInt.Type.toInt(INPUT);
         switch (MATHOP) {
             case "abs":
                 return new jwInt.Type(INPUT.number > 0n ? INPUT.number : -INPUT.number);
+            case 'log':
+                if (INPUT.number < 1n) return new jwInt.Type(-1);
+                else return new jwInt.Type(INPUT.number.toString().length - 1);
             case "sign":
-                if (INPUT.number == 0n) return new jwInt.Type(0);
+                if (INPUT.number === 0n) return new jwInt.Type(0);
                 else if (INPUT.number > 0n) return new jwInt.Type(1);
                 else return new jwInt.Type(-1);
             default: 
-                return INPUT
+                return INPUT;
         }
     }
 
