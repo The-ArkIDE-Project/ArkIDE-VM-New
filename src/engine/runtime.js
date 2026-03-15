@@ -28,6 +28,7 @@ const ModalManager = require('../extension-support/pm-modal-manager');
 const MathUtil = require('../util/math-util');
 const Cast = require('../util/cast');
 const ExtensionStorage = require('../util/deprecated-extension-storage.js');
+const CLOUD_ID_MAGIC = ' // _cloudid_';
 
 // Virtual I/O devices.
 const Clock = require('../io/clock');
@@ -4125,6 +4126,27 @@ class Runtime extends EventEmitter {
         this.externalCommunicationMethods[method] = enabled;
         this.updatePrivacy();
     }
+
+getOrCreateCloudRoomId() {
+    // Check if we already have a cloud ID stored in a comment
+    const target = this.getTargetForStage();
+    if (!target) return null;
+    
+    const comments = target.comments;
+    for (const comment of Object.values(comments)) {
+        const line = comment.text.split('\n').find(i => i.endsWith(CLOUD_ID_MAGIC));
+        if (line) {
+            return line.slice(0, line.length - CLOUD_ID_MAGIC.length).trim();
+        }
+    }
+    
+    // No ID found, create one and store it
+    const id = uid();
+    const text = `Cloud Room ID — do not edit or delete this comment.\n${id}${CLOUD_ID_MAGIC}`;
+    target.createComment(uid(), null, text, 50, 250, 350, 100, true);
+    this.emitProjectChanged();
+    return id;
+}
 }
 
 /**
