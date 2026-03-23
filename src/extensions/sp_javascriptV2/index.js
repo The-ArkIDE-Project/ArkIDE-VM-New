@@ -513,6 +513,12 @@ class SPjavascriptV2 {
     ].join("\n"));
   }
 
+  _getThisBlockID(util) {
+    return util.thread.isCompiled ?
+      util.thread.peekStack() :
+      util.thread.peekStackFrame().op.id;
+  }
+
   _parseArguments(arg) {
     if (!arg) return [];
 
@@ -548,60 +554,78 @@ class SPjavascriptV2 {
     }
   }
 
-  async _compileCode(code, codeArgs = []) {
-    let binders = "";
-
-    /* inject global functions */
-    if (this.globalFuncs.size > 0) {
-      const entries = this.globalFuncs.entries();
-      let iteratorValue = entries.next();
-      while (!iteratorValue.done) {
-        const [name, funcData] = iteratorValue.value;
-        if (funcData.isBlockCode) {
-          binders += `const ${name} = async function(...args) {\n`;
-          if (funcData.id) {
-            binders += `return new Promise((resolve) => {\n`;
-            binders += `const target = vm.runtime.getTargetById("${funcData.origin}");\n`;
-            binders += `const thread = vm.runtime._pushThread("${funcData.id}", target);\n`;
-            binders += `const threadID = thread.getId();\n`;
-            binders += `thread.jsExtData = [...args];\n`;
-
-            /* listener for thread returns */
-            binders += `const endHandler = (t) => {\n`;
-            binders += `if (t.getId() === thread.getId()) {\n`;
-            binders += `vm.runtime.removeListener("THREAD_FINISHED", endHandler);\n`;
-            binders += `resolve(t.justReported);\n`;
-            binders += "}\n";
-            binders += "};\n";
-            binders += `vm.runtime.on("THREAD_FINISHED", endHandler);\n`;
-            binders += "});\n";
-          }
-          binders += "}\n";
-        } else {
-          binders += `const ${name} = ${funcData.code}\n`;
-        }
-
-        iteratorValue = entries.next();
-      }
+  async _compileCode(code, codeArgs = [], util) {
+    // check if we have a cached function so we can
+    // run code faster
+    let cacheKey;
+    let newFunc = undefined;
+    if (
+      this.isEditorUnsandboxed ||
+      this.runtime.extensionRuntimeOptions.javascriptUnsandboxed === true
+    ) {
+      cacheKey = this._getThisBlockID(util);
+      newFunc = util.thread._JSV2cache?.[cacheKey];
     }
 
-    /* generate arguments */
     const isArgArray = Array.isArray(codeArgs);
     const argEntries = Object.entries(codeArgs);
+    if (newFunc === undefined) {
+      // no cache found
+      let binders = "";
 
-    let argNames = [];
-    if (codeArgs !== undefined) {
-      if (isArgArray) argNames.push("...data");
-      else argNames.push(...argEntries.map((a) => a[0]));
+      /* inject global functions */
+      if (this.globalFuncs.size > 0) {
+        const entries = this.globalFuncs.entries();
+        let iteratorValue = entries.next();
+        while (!iteratorValue.done) {
+          const [name, funcData] = iteratorValue.value;
+          if (funcData.isBlockCode) {
+            binders += `const ${name} = async function(...args) {\n`;
+            if (funcData.id) {
+              binders += `return new Promise((resolve) => {\n`;
+              binders += `const target = vm.runtime.getTargetById("${funcData.origin}");\n`;
+              binders += `const thread = vm.runtime._pushThread("${funcData.id}", target);\n`;
+              binders += `const threadID = thread.getId();\n`;
+              binders += `thread.jsExtData = [...args];\n`;
+
+              /* listener for thread returns */
+              binders += `const endHandler = (t) => {\n`;
+              binders += `if (t.getId() === thread.getId()) {\n`;
+              binders += `vm.runtime.removeListener("THREAD_FINISHED", endHandler);\n`;
+              binders += `resolve(t.justReported);\n`;
+              binders += "}\n";
+              binders += "};\n";
+              binders += `vm.runtime.on("THREAD_FINISHED", endHandler);\n`;
+              binders += "});\n";
+            }
+            binders += "}\n";
+          } else {
+            binders += `const ${name} = ${funcData.code}\n`;
+          }
+
+          iteratorValue = entries.next();
+        }
+      }
+
+      /* generate arguments */
+      let argNames = [];
+      if (codeArgs !== undefined) {
+        if (isArgArray) argNames.push("...data");
+        else argNames.push(...argEntries.map((a) => a[0]));
+      }
+
+      newFunc = this.ASYNC_FUNC_PROTO.constructor(...argNames, binders + code);
     }
-
-    const newFunc = this.ASYNC_FUNC_PROTO.constructor(...argNames, binders + code);
 
     /* 'extensionRuntimeOptions.javascriptUnsandboxed' is used by packager */
     if (
       this.isEditorUnsandboxed ||
       this.runtime.extensionRuntimeOptions.javascriptUnsandboxed === true
     ) {
+      // cache the function
+      if (!util.thread._JSV2cache) util.thread._JSV2cache = {};
+      util.thread._JSV2cache[cacheKey] = newFunc;
+
       // unsandboxed code
       let result;
       try {
@@ -643,28 +667,30 @@ class SPjavascriptV2 {
     return args.CODE;
   }
 
-  async jsCommand(args) {
-    await this._compileCode(Cast.toString(args.CODE));
+  async jsCommand(args, util) {
+    await this._compileCode(Cast.toString(args.CODE), [], util);
   }
-  async jsCommandBinded(args) {
+  async jsCommandBinded(args, util) {
     await this._compileCode(
       Cast.toString(args.CODE),
-      this._parseArguments(args.ARGS)
+      this._parseArguments(args.ARGS),
+      util
     );
   }
 
-  async jsReporter(args) {
-    return await this._compileCode(Cast.toString(args.CODE));
+  async jsReporter(args, util) {
+    return await this._compileCode(Cast.toString(args.CODE), [], util);
   }
-  async jsReporterBinded(args) {
+  async jsReporterBinded(args, util) {
     return await this._compileCode(
       Cast.toString(args.CODE),
-      this._parseArguments(args.ARGS)
+      this._parseArguments(args.ARGS),
+      util
     );
   }
 
-  async jsBoolean(args) {
-    const possiblePromise = await this._compileCode(Cast.toString(args.CODE));
+  async jsBoolean(args, util) {
+    const possiblePromise = await this._compileCode(Cast.toString(args.CODE), [], util);
 
     /* force output a boolean */
     if (possiblePromise && typeof possiblePromise.then === "function") {
@@ -676,10 +702,11 @@ class SPjavascriptV2 {
 
     return Cast.toBoolean(possiblePromise);
   }
-  async jsBooleanBinded(args) {
+  async jsBooleanBinded(args, util) {
     const possiblePromise = await this._compileCode(
       Cast.toString(args.CODE),
-      this._parseArguments(args.ARGS)
+      this._parseArguments(args.ARGS),
+      util
     );
 
     /* force output a boolean */
