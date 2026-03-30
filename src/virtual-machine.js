@@ -482,6 +482,7 @@ class VirtualMachine extends EventEmitter {
      * @return {!Promise} Promise that resolves after targets are installed.
      */
     loadProject (input) {
+        this.emit('DESERIALIZE', 'project');
         return new Promise(async (resolve, reject) => {
             try {
                 const arr = new Uint8Array(input);
@@ -735,6 +736,7 @@ class VirtualMachine extends EventEmitter {
      * @return {string} Serialized state of the runtime.
      */
     toJSON (optTargetId, serializationOptions, beautiful) {
+        this.emit('SERIALIZE', optTargetId);
         const sb3 = require('./serialization/sb3');
         return StringUtil.stringify(sb3.serialize(this.runtime, optTargetId, serializationOptions), beautiful);
     }
