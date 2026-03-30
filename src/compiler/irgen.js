@@ -2586,7 +2586,7 @@ class IRGenerator {
         return ir;
     }
     
-    static exports = {
+    static publicAPI = {
         ScriptTreeGenerator
     }
 }
