@@ -7,7 +7,7 @@ const Variable = require('../engine/variable');
 const Color = require('../util/color');
 const log = require('../util/log');
 const Clone = require('../util/clone');
-const {IntermediateScript, IntermediateRepresentation, IntermediateStack} = require('./intermediate');
+const {IntermediateScript, IntermediateRepresentation} = require('./intermediate');
 const compatBlocks = require('./compat-blocks');
 
 /**
