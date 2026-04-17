@@ -175,7 +175,7 @@ class ConstantInput {
 
     asUnknown () {
         // Attempt to convert strings to numbers if it is unlikely to break things
-        if (typeof this.constantValue === 'number') {
+        if (typeof this.constantValue === 'number' || typeof this.constantValue === 'boolean') {
             // todo: handle NaN?
             return this.constantValue;
         }
@@ -1136,6 +1136,8 @@ class JSGenerator {
             return new TypedInput(`JSON.stringify(Object.keys(tempVars))`, TYPE_STRING);
         case 'control.dualBlock':
             return new TypedInput('"dual block works!"', TYPE_STRING);
+        case 'control.fromToIndex':
+            return new TypedInput('(typeof _pmControlFromToIndex !== "undefined" ? _pmControlFromToIndex : 0)', TYPE_NUMBER)
 
         default:
             log.warn(`JS: Unknown input: ${node.kind}`, node);
@@ -1466,6 +1468,20 @@ class JSGenerator {
             }
             this.source += `}\n`;
             break;
+        case 'control.fromTo': {
+            this.resetVariableInputs();
+            const from = this.localVariables.next();
+            const to = this.localVariables.next();
+            const index = this.localVariables.next();
+            this.source += `var ${from} = ${this.descendInput(node.from).asNumber()};\n`;
+            this.source += `var ${to} = ${this.descendInput(node.to).asNumber()};\n`;
+            this.source += `for (var ${index} = ${from}; ${index} <= ${to}; ${index}++) {\n`;
+            this.source += `let _pmControlFromToIndex = ${index};\n`;
+            this.descendStack(node.do, new Frame(true, 'control.fromTo'));
+            this.yieldLoop();
+            this.source += '}\n';
+            break;
+        }
         case 'control.runAsSprite':
             const stage = 'runtime.getTargetForStage()';
             const sprite = this.descendInput(node.sprite).asString();
@@ -1606,13 +1622,14 @@ class JSGenerator {
         case 'list.deleteAll':
             this.source += `${this.referenceVariable(node.list)}.value = [];\n`;
             break;
-        case 'list.shift':
+        case 'list.shift': {
             const list = this.referenceVariable(node.list);
             const index = this.descendInput(node.index).asNumber();
             if (index <= 0) break;
-            this.source += `${list}.value = ${list}.value.slice(${index});\n`
-            this.source += `${list}._monitorUpToDate = false;\n`
-            break
+            this.source += `${list}.value = ${list}.value.slice(${index});\n`;
+            this.source += `${list}._monitorUpToDate = false;\n`;
+            break;
+        }
         case 'list.hide':
             this.source += `runtime.monitorBlocks.changeBlock({ id: "${sanitize(node.list.id)}", element: "checkbox", value: false }, runtime);\n`;
             break;

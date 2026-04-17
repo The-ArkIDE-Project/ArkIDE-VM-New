@@ -301,6 +301,10 @@ class ScriptTreeGenerator {
             return {
                 kind: 'control.isclone'
             };
+        case 'control_from_to_index':
+            return {
+                kind: 'control.fromToIndex'
+            };
 
         case 'data_variable':
             return {
@@ -1371,6 +1375,14 @@ class ScriptTreeGenerator {
             return {
                 kind: 'control.newScript',
                 substack: this.descendSubstack(block, 'SUBSTACK')
+            };
+        case 'control_from_to':
+            this.analyzeLoop();
+            return {
+                kind: 'control.fromTo',
+                from: this.descendInputOfBlock(block, 'FROM'),
+                to: this.descendInputOfBlock(block, 'TO'),
+                do: this.descendSubstack(block, 'SUBSTACK')
             };
         case 'data_addtolist':
             return {
